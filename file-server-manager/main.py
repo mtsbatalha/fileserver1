@@ -20,7 +20,6 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.prompt import Prompt, Confirm, IntPrompt, FloatPrompt
-from rich.menu import Menu
 
 console = Console()
 
