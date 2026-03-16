@@ -1,0 +1,29 @@
+[
+  {
+    "username": "admin",
+    "password": "Admin@123",
+    "home_dir": "/srv/files/users/admin",
+    "protocols": ["ftp", "sftp", "smb", "webdav"],
+    "quota_mb": null,
+    "enabled": true,
+    "system_user": true
+  },
+  {
+    "username": "usuario1",
+    "password": "User@1234",
+    "home_dir": "/srv/files/users/usuario1",
+    "protocols": ["ftp", "sftp"],
+    "quota_mb": 1000,
+    "enabled": true,
+    "system_user": true
+  },
+  {
+    "username": "convidado",
+    "password": "Guest@123",
+    "home_dir": "/srv/files/users/convidado",
+    "protocols": ["ftp"],
+    "quota_mb": 100,
+    "enabled": true,
+    "system_user": false
+  }
+]

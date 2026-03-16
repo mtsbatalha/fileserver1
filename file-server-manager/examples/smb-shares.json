@@ -1,0 +1,29 @@
+[
+  {
+    "name": "publico",
+    "path": "/srv/files/smb/publico",
+    "comment": "Compartilhamento Público",
+    "browseable": true,
+    "read_only": false,
+    "guest_ok": true,
+    "valid_users": []
+  },
+  {
+    "name": "departamento",
+    "path": "/srv/files/smb/departamento",
+    "comment": "Compartilhamento do Departamento",
+    "browseable": true,
+    "read_only": false,
+    "guest_ok": false,
+    "valid_users": ["admin", "usuario1"]
+  },
+  {
+    "name": "backup",
+    "path": "/srv/files/smb/backup",
+    "comment": "Backup de Arquivos",
+    "browseable": false,
+    "read_only": true,
+    "guest_ok": false,
+    "valid_users": ["admin"]
+  }
+]

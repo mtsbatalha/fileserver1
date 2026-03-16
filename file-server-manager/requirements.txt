@@ -1,0 +1,27 @@
+# Dependências para File Server Manager
+# Instalação: pip install -r requirements.txt
+
+# Criptografia e segurança
+bcrypt>=4.0.0
+cryptography>=41.0.0
+argon2-cffi>=23.1.0
+
+# Utilitários
+rich>=13.5.0          # Interface de terminal rica
+questionary>=2.0.0    # Menus interativos
+click>=8.1.0          # Interface de linha de comando
+pyyaml>=6.0.1         # Parse de YAML
+jsonschema>=4.19.0    # Validação de JSON
+
+# Sistema e processos
+psutil>=5.9.0         # Monitoramento de sistema
+python-dotenv>=1.0.0  # Variáveis de ambiente
+
+# Logging e auditoria
+colorlog>=6.7.0       # Logs coloridos
+
+# Para geração de certificados
+pyOpenSSL>=23.2.0
+
+# Suporte a S3 (MinIO)
+minio>=7.1.0
