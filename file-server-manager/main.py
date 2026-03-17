@@ -663,13 +663,15 @@ class FileServerManager:
                 "Gerar Certificado SSL",
                 "Verificar Certificado",
                 "Configurar Fail2Ban",
+                "Ver IPs Bloqueados (Fail2Ban)",
+                "Desbloquear IP (Fail2Ban)",
                 "Gerenciar IP Whitelist",
                 "Gerenciar IP Blacklist",
                 "Configurar Firewall",
                 "Voltar"
             ])
             
-            choice = Prompt.ask("Escolha", choices=["1", "2", "3", "4", "5", "6", "0"], default="0")
+            choice = Prompt.ask("Escolha", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], default="0")
             
             if choice == "0":
                 break
@@ -681,16 +683,49 @@ class FileServerManager:
             elif choice == "3":
                 self.security_manager.setup_fail2ban()
             elif choice == "4":
+                self.security_manager.display_banned_ips()
+            elif choice == "5":
+                self.unban_ip_menu()
+            elif choice == "6":
                 ip = Prompt.ask("IP para whitelist")
                 self.security_manager.add_ip_whitelist(ip)
-            elif choice == "5":
+            elif choice == "7":
                 ip = Prompt.ask("IP para blacklist")
                 self.security_manager.add_ip_blacklist(ip)
-            elif choice == "6":
+            elif choice == "8":
                 protocols = list(self.PROTOCOLS.keys())
                 self.security_manager.setup_firewall_rules(protocols)
             
             Prompt.ask("\nPressione Enter para continuar")
+    
+    def unban_ip_menu(self):
+        """Menu para desbloquear IP"""
+        self.clear_screen()
+        self.print_header("Desbloquear IP")
+        
+        # Exibir IPs bloqueados
+        self.security_manager.display_banned_ips()
+        
+        console.print("\n[bold]Opções:[/bold]")
+        console.print("  1. Desbloquear IP específico")
+        console.print("  2. Desbloquear TODOS os IPs")
+        console.print("  0. Voltar")
+        
+        choice = Prompt.ask("Escolha", choices=["1", "2", "0"], default="0")
+        
+        if choice == "1":
+            jail = Prompt.ask("Jail (padrão: all)", default="all")
+            ip = Prompt.ask("IP para desbloquear")
+            if self.security_manager.unban_ip(ip, jail if jail != "all" else None):
+                console.print(f"[green]✓ IP {ip} desbloqueado[/green]")
+            else:
+                console.print(f"[red]✗ Falha ao desbloquear IP {ip}[/red]")
+        elif choice == "2":
+            if Confirm.ask("Tem certeza que deseja desbloquear TODOS os IPs?", default=False):
+                self.security_manager.unban_all_ips()
+                console.print("[green]✓ Todos os IPs desbloqueados[/green]")
+        
+        Prompt.ask("\nPressione Enter para continuar")
     
     def quota_menu(self):
         """Menu de quotas"""
@@ -808,10 +843,11 @@ class FileServerManager:
                 "Alterar caminho base",
                 "Backup de configurações",
                 "Restaurar configurações",
+                "Utilitários",
                 "Voltar"
             ])
             
-            choice = Prompt.ask("Escolha", choices=["1", "2", "3", "0"], default="0")
+            choice = Prompt.ask("Escolha", choices=["1", "2", "3", "4", "0"], default="0")
             
             if choice == "0":
                 break
@@ -825,6 +861,230 @@ class FileServerManager:
                 console.print(f"[green]✓ Backup criado: {backup_path}[/green]")
             elif choice == "3":
                 console.print("[yellow]⚠ Restauração manual requerida[/yellow]")
+            elif choice == "4":
+                self.utilities_menu()
+    
+    def utilities_menu(self):
+        """Menu de utilitários"""
+        while True:
+            self.clear_screen()
+            self.print_header("Utilitários")
+            
+            self.print_menu([
+                "Sincronizar Usuários (corrige FTP/SFTP)",
+                "Redefinir Senha de Usuário",
+                "Reiniciar Serviços",
+                "Verificar Logs de Erro",
+                "Voltar"
+            ])
+            
+            choice = Prompt.ask("Escolha", choices=["1", "2", "3", "4", "0"], default="0")
+            
+            if choice == "0":
+                break
+            elif choice == "1":
+                self.sync_users_utility()
+            elif choice == "2":
+                self.reset_password_utility()
+            elif choice == "3":
+                self.restart_services_utility()
+            elif choice == "4":
+                self.view_error_logs_utility()
+            
+            Prompt.ask("\nPressione Enter para continuar")
+    
+    def sync_users_utility(self):
+        """Utilitário para sincronizar usuários"""
+        self.clear_screen()
+        self.print_header("Sincronizar Usuários")
+        
+        console.print("[yellow]⚠ Este utilitário irá:[/yellow]")
+        console.print("  - Criar usuários no sistema operacional se não existirem")
+        console.print("  - Adicionar usuários às listas do vsftpd (FTP)")
+        console.print("  - Criar diretórios home")
+        console.print("\n[dim]Use este utilitário se estiver com problemas de autenticação no FTP/SFTP[/dim]\n")
+        
+        if not Confirm.ask("Deseja continuar?", default=True):
+            return
+        
+        from core.user_manager import UserManager
+        
+        user_manager = UserManager(self.config_path)
+        users = user_manager.list_users()
+        
+        if not users:
+            console.print("[yellow]⚠ Nenhum usuário cadastrado[/yellow]")
+            return
+        
+        for user in users:
+            username = user['username']
+            home_dir = user.get('home_dir', f'/srv/files/users/{username}')
+            protocols = user.get('protocols', ['ftp', 'sftp', 'smb'])
+            
+            console.print(f"\n[cyan]▶ Sincronizando: {username}[/cyan]")
+            
+            # Criar/atualizar usuário no sistema
+            user_manager._create_system_user(username, home_dir, None)
+            
+            # Sincronizar com FTP se necessário
+            if 'ftp' in protocols:
+                user_manager._sync_ftp_user(username, None)
+            
+            # Criar diretório home
+            try:
+                os.makedirs(home_dir, exist_ok=True)
+                console.print(f"[green]✓ Diretório home verificado: {home_dir}[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Erro ao criar diretório: {e}[/yellow]")
+        
+        console.print("\n[green]✓ Sincronização concluída![/green]")
+        console.print("[dim]Agora redefina a senha dos usuários usando a opção 2 do menu Utilitários[/dim]")
+    
+    def reset_password_utility(self):
+        """Utilitário para redefinir senha"""
+        self.clear_screen()
+        self.print_header("Redefinir Senha")
+        
+        users = self.user_manager.list_users()
+        
+        if not users:
+            console.print("[yellow]⚠ Nenhum usuário cadastrado[/yellow]")
+            return
+        
+        console.print("Usuários disponíveis:")
+        for i, user in enumerate(users, 1):
+            console.print(f"  {i}. {user['username']}")
+        
+        choice = Prompt.ask("\nSelecione", choices=[str(i) for i in range(1, len(users) + 1)])
+        user = users[int(choice) - 1]
+        username = user['username']
+        
+        console.print(f"\n[bold]Redefinindo senha de: {username}[/bold]")
+        
+        # Opção de senha
+        console.print("\n[bold]Opções de Senha:[/bold]")
+        console.print("  1. Gerar senha aleatória")
+        console.print("  2. Digitar senha manualmente")
+        
+        pwd_choice = Prompt.ask("Escolha", choices=["1", "2"], default="1")
+        
+        if pwd_choice == "1":
+            length = IntPrompt.ask("Tamanho da senha", default=16)
+            new_password = self.generate_random_password(length)
+            console.print(f"\n[bold green]Senha gerada:[/bold green] [yellow]{new_password}[/yellow]")
+            console.print("[dim]⚠ Copie esta senha![/dim]")
+            if not Confirm.ask("\nVocê copiou a senha?", default=False):
+                return
+        else:
+            new_password = Prompt.ask("Nova senha", password=True)
+            confirm = Prompt.ask("Confirmar senha", password=True)
+            if new_password != confirm:
+                console.print("[red]✗ Senhas não coincidem[/red]")
+                return
+        
+        # Atualizar no sistema
+        from core.user_manager import UserManager
+        user_manager = UserManager(self.config_path)
+        
+        # Atualizar senha no sistema operacional
+        user_manager._update_system_password(username, new_password)
+        
+        # Atualizar no gerenciador
+        user_manager.update_user(username, password=new_password)
+        
+        # Sincronizar com FTP
+        if 'ftp' in user.get('protocols', []):
+            user_manager._sync_ftp_user(username, new_password)
+        
+        console.print(f"\n[green]✓ Senha de {username} redefinida com sucesso![/green]")
+        console.print("[dim]A autenticação FTP/SFTP deve funcionar agora[/dim]")
+    
+    def restart_services_utility(self):
+        """Utilitário para reiniciar serviços"""
+        self.clear_screen()
+        self.print_header("Reiniciar Serviços")
+        
+        console.print("[bold]Serviços disponíveis:[/bold]\n")
+        
+        services = [
+            ('vsftpd', 'FTP'),
+            ('sshd', 'SFTP'),
+            ('nfs-server', 'NFS'),
+            ('smbd', 'SMB/CIFS'),
+            ('apache2', 'WebDAV'),
+        ]
+        
+        for svc, name in services:
+            console.print(f"  - {name} ({svc})")
+        
+        console.print("\n[bold]Opções:[/bold]")
+        console.print("  1. Reiniciar todos os serviços")
+        console.print("  2. Reiniciar serviço específico")
+        console.print("  0. Voltar")
+        
+        choice = Prompt.ask("Escolha", choices=["1", "2", "0"], default="0")
+        
+        if choice == "0":
+            return
+        
+        if choice == "1":
+            for svc, name in services:
+                console.print(f"[cyan]▶ Reiniciando {name}...[/cyan]")
+                try:
+                    subprocess.run(['systemctl', 'restart', svc], capture_output=True, timeout=30)
+                    console.print(f"[green]✓ {name} reiniciado[/green]")
+                except Exception as e:
+                    console.print(f"[yellow]⚠ {name}: {e}[/yellow]")
+        elif choice == "2":
+            svc_choice = Prompt.ask("Selecione o serviço", choices=[str(i) for i in range(1, len(services) + 1)])
+            svc, name = services[int(svc_choice) - 1]
+            console.print(f"[cyan]▶ Reiniciando {name}...[/cyan]")
+            try:
+                subprocess.run(['systemctl', 'restart', svc], capture_output=True, timeout=30)
+                console.print(f"[green]✓ {name} reiniciado[/green]")
+            except Exception as e:
+                console.print(f"[red]✗ Erro: {e}[/red]")
+    
+    def view_error_logs_utility(self):
+        """Utilitário para ver logs de erro"""
+        self.clear_screen()
+        self.print_header("Logs de Erro")
+        
+        console.print("[bold]Logs disponíveis:[/bold]\n")
+        
+        logs = [
+            ('/var/log/vsftpd.log', 'FTP'),
+            ('/var/log/auth.log', 'Autenticação (SFTP)'),
+            ('/var/log/syslog', 'Sistema'),
+            ('/var/log/fail2ban.log', 'Fail2Ban'),
+        ]
+        
+        for i, (log_path, name) in enumerate(logs, 1):
+            console.print(f"  {i}. {name}")
+        
+        console.print("  0. Voltar")
+        
+        choice = Prompt.ask("\nEscolha", choices=["1", "2", "3", "4", "0"], default="0")
+        
+        if choice == "0":
+            return
+        
+        log_path, name = logs[int(choice) - 1]
+        
+        console.print(f"\n[cyan]▶ Últimas 50 linhas de {name}:[/cyan]\n")
+        
+        try:
+            result = subprocess.run(
+                ['tail', '-50', log_path],
+                capture_output=True,
+                text=True
+            )
+            if result.stdout:
+                console.print(result.stdout)
+            else:
+                console.print("[yellow]⚠ Log vazio ou não encontrado[/yellow]")
+        except Exception as e:
+            console.print(f"[red]✗ Erro ao ler log: {e}[/red]")
 
 
 def main():

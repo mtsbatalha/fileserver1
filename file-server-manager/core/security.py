@@ -405,22 +405,120 @@ bantime = 1800
         """Desbanir um IP"""
         try:
             if jail:
-                subprocess.run(
+                result = subprocess.run(
                     ['fail2ban-client', 'set', jail, 'unbanip', ip],
                     capture_output=True,
                     timeout=30
                 )
             else:
-                subprocess.run(
-                    ['fail2ban-client', 'set', jail, 'unbanip', ip],
-                    capture_output=True,
-                    timeout=30
-                )
-            console.print(f"[green]✓ IP {ip} desbanido[/green]")
-            return True
+                # Desbanir de todas as jails
+                jails = self.get_fail2ban_status().get('jails', [])
+                for j in jails:
+                    subprocess.run(
+                        ['fail2ban-client', 'set', j, 'unbanip', ip],
+                        capture_output=True,
+                        timeout=30
+                    )
+                console.print(f"[green]✓ IP {ip} desbanido de todas as jails[/green]")
+                return True
+            if result.returncode == 0:
+                console.print(f"[green]✓ IP {ip} desbanido da jail {jail}[/green]")
+                return True
+            else:
+                console.print(f"[red]✗ Falha ao desbanir IP {ip}[/red]")
+                return False
         except Exception as e:
             console.print(f"[red]✗ Erro ao desbanir IP: {e}[/red]")
             return False
+    
+    def unban_all_ips(self) -> bool:
+        """Desbanir todos os IPs de todas as jails"""
+        try:
+            status = self.get_fail2ban_status()
+            if not status.get('running'):
+                console.print("[yellow]⚠ Fail2ban não está rodando[/yellow]")
+                return False
+            
+            jails = status.get('jails', [])
+            total_unbanned = 0
+            
+            for jail in jails:
+                # Obter IPs banidos desta jail
+                result = subprocess.run(
+                    ['fail2ban-client', 'get', jail, 'ipbans'],
+                    capture_output=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    ips = result.stdout.strip()
+                    if ips and ips != '':
+                        # Extrair IPs da saída
+                        import re
+                        ip_list = re.findall(r'\d+\.\d+\.\d+\.\d+', ips)
+                        for ip in ip_list:
+                            subprocess.run(
+                                ['fail2ban-client', 'set', jail, 'unbanip', ip],
+                                capture_output=True,
+                                timeout=30
+                            )
+                            total_unbanned += 1
+            
+            console.print(f"[green]✓ {total_unbanned} IPs desbanidos de {len(jails)} jails[/green]")
+            return True
+        except Exception as e:
+            console.print(f"[red]✗ Erro ao desbanir todos os IPs: {e}[/red]")
+            return False
+    
+    def display_banned_ips(self):
+        """Exibe IPs banidos pelo fail2ban"""
+        try:
+            status = self.get_fail2ban_status()
+            
+            if not status.get('running'):
+                console.print("[yellow]⚠ Fail2ban não está rodando[/yellow]")
+                return
+            
+            jails = status.get('jails', [])
+            
+            if not jails:
+                console.print("[yellow]⚠ Nenhuma jail ativa[/yellow]")
+                return
+            
+            table = Table(title="IPs Bloqueados pelo Fail2Ban")
+            table.add_column("Jail", style="cyan")
+            table.add_column("IPs Bloqueados", style="red")
+            table.add_column("Total", style="yellow")
+            
+            total_banned = 0
+            
+            for jail in jails:
+                result = subprocess.run(
+                    ['fail2ban-client', 'get', jail, 'ipbans'],
+                    capture_output=True,
+                    timeout=30
+                )
+                
+                if result.returncode == 0:
+                    ips = result.stdout.strip()
+                    # Extrair IPs da saída
+                    import re
+                    ip_list = re.findall(r'\d+\.\d+\.\d+\.\d+', ips)
+                    count = len(ip_list)
+                    total_banned += count
+                    
+                    ips_display = ', '.join(ip_list) if ip_list else 'Nenhum'
+                    table.add_row(jail, ips_display, str(count))
+            
+            console.print(table)
+            console.print(f"\n[bold]Total de IPs bloqueados:[/bold] {total_banned}")
+            
+            if total_banned > 0:
+                console.print("\n[dim]Dica: Use a opção 'Desbloquear IP' no menu de Segurança para liberar um IP específico[/dim]")
+            
+        except Exception as e:
+            console.print(f"[red]✗ Erro ao obter IPs banidos: {e}[/red]")
+            console.print("[yellow]⚠ Verifique se o fail2ban está instalado e rodando: sudo systemctl status fail2ban[/yellow]")
     
     # ==================== Restrições de IP ====================
     
