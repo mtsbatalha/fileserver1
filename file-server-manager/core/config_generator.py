@@ -522,7 +522,7 @@ DAVLockDB /var/lib/dav/lockdb
     
     # Redirecionar para HTTPS
     RewriteEngine On
-    RewriteCond %{HTTPS} off
+    RewriteCond %{{HTTPS}} off
     RewriteRule ^(.*)$ https://%{{HTTP_HOST}}%{{REQUEST_URI}} [L,R=301]
 </VirtualHost>
 
