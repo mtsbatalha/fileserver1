@@ -740,8 +740,8 @@ services:
       - {data_dir}:/data
       - {certs_dir}:/root/.minio/certs
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_ROOT_USER: ${{MINIO_ROOT_USER:-minioadmin}}
+      MINIO_ROOT_PASSWORD: ${{MINIO_ROOT_PASSWORD:-minioadmin123}}
       MINIO_CERTS_DIR: /root/.minio/certs
     command: server /data --console-address ":9001"
     healthcheck:
