@@ -99,16 +99,42 @@ class FTPServer:
         console.print(f"[cyan]▶ Adicionando usuário {username} ao FTP...[/cyan]")
         
         try:
-            # Adicionar à lista de usuários
-            with open('/etc/vsftpd.user_list', 'a') as f:
-                f.write(username + '\n')
+            # Criar arquivo de lista se não existir
+            user_list_file = '/etc/vsftpd.user_list'
+            chroot_list_file = '/etc/vsftpd.chroot_list'
             
-            # Se home_dir especificado, adicionar ao chroot list
-            if home_dir:
-                with open('/etc/vsftpd.chroot_list', 'a') as f:
+            # Garantir que os arquivos existam
+            if not os.path.exists(user_list_file):
+                open(user_list_file, 'a').close()
+                os.chmod(user_list_file, 0o644)
+                console.print(f"[green]✓ Criado: {user_list_file}[/green]")
+            
+            if not os.path.exists(chroot_list_file):
+                open(chroot_list_file, 'a').close()
+                os.chmod(chroot_list_file, 0o644)
+                console.print(f"[green]✓ Criado: {chroot_list_file}[/green]")
+            
+            # Verificar se usuário já está na lista
+            with open(user_list_file, 'r') as f:
+                existing_users = [line.strip() for line in f.readlines()]
+            
+            if username not in existing_users:
+                with open(user_list_file, 'a') as f:
                     f.write(username + '\n')
+                console.print(f"[green]✓ Usuário {username} adicionado à lista[/green]")
+            else:
+                console.print(f"[yellow]⚠ Usuário {username} já está na lista[/yellow]")
             
-            console.print(f"[green]✓ Usuário {username} adicionado[/green]")
+            # Adicionar ao chroot list se home_dir especificado
+            if home_dir:
+                with open(chroot_list_file, 'r') as f:
+                    chroot_users = [line.strip() for line in f.readlines()]
+                
+                if username not in chroot_users:
+                    with open(chroot_list_file, 'a') as f:
+                        f.write(username + '\n')
+                    console.print(f"[green]✓ Usuário {username} adicionado ao chroot[/green]")
+            
             return True
         except Exception as e:
             console.print(f"[red]✗ Erro: {e}[/red]")
