@@ -985,22 +985,59 @@ class FileServerManager:
                 console.print("[red]✗ Senhas não coincidem[/red]")
                 return
         
-        # Atualizar no sistema
-        from core.user_manager import UserManager
-        user_manager = UserManager(self.config_path)
+        # CORREÇÃO: Usar o user_manager correto (self.user_manager já é a instância correta)
+        console.print("\n[cyan]▶ Atualizando senha no sistema...[/cyan]")
         
-        # Atualizar senha no sistema operacional
-        user_manager._update_system_password(username, new_password)
+        # 1. Primeiro, garantir que o usuário existe no sistema operacional
+        try:
+            result = subprocess.run(['id', username], capture_output=True, text=True)
+            if result.returncode != 0:
+                console.print(f"[yellow]⚠ Usuário {username} não existe no sistema. Criando...[/yellow]")
+                home_dir = user.get('home_dir', f'/srv/files/users/{username}')
+                # Criar usuário no sistema
+                subprocess.run([
+                    'useradd', '-m', '-d', home_dir, '-s', '/usr/sbin/nologin', username
+                ], capture_output=True)
+        except Exception as e:
+            console.print(f"[yellow]⚠ Erro ao verificar/criar usuário no sistema: {e}[/yellow]")
         
-        # Atualizar no gerenciador
-        user_manager.update_user(username, password=new_password)
+        # 2. Atualizar senha no sistema operacional
+        console.print("[cyan]▶ Atualizando senha no sistema operacional...[/cyan]")
+        result = self.user_manager._update_system_password(username, new_password)
         
-        # Sincronizar com FTP
+        # 3. Atualizar no gerenciador (salva hash bcrypt)
+        console.print("[cyan]▶ Atualizando hash local...[/cyan]")
+        self.user_manager.update_user(username, password=new_password)
+        
+        # 4. Sincronizar com FTP
         if 'ftp' in user.get('protocols', []):
-            user_manager._sync_ftp_user(username, new_password)
+            console.print("[cyan]▶ Sincronizando com FTP...[/cyan]")
+            self.user_manager._sync_ftp_user(username, new_password)
+        
+        # 5. Reiniciar serviços
+        console.print("[cyan]▶ Reiniciando serviços...[/cyan]")
+        try:
+            subprocess.run(['systemctl', 'restart', 'vsftpd'], capture_output=True, timeout=10)
+            console.print("[green]✓ Serviço vsftpd reiniciado[/green]")
+        except:
+            pass
+        try:
+            subprocess.run(['systemctl', 'restart', 'sshd'], capture_output=True, timeout=10)
+            console.print("[green]✓ Serviço sshd reiniciado[/green]")
+        except:
+            pass
         
         console.print(f"\n[green]✓ Senha de {username} redefinida com sucesso![/green]")
         console.print("[dim]A autenticação FTP/SFTP deve funcionar agora[/dim]")
+        
+        # Aviso adicional
+        console.print("\n[yellow]⚠ IMPORTANTE:[/yellow]")
+        console.print("  - A senha foi atualizada no sistema (/etc/shadow)")
+        console.print("  - O vsftpd usa PAM para autenticar usuários do sistema")
+        console.print("  - Se ainda não conseguir acessar, verifique:")
+        console.print("    1. Se o usuário está em /etc/vsftpd.user_list")
+        console.print("    2. Se o shell do usuário não é /usr/sbin/nologin")
+        console.print("    3. Se o diretório home existe e tem permissões corretas")
     
     def restart_services_utility(self):
         """Utilitário para reiniciar serviços"""

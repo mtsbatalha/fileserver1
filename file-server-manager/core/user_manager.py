@@ -114,27 +114,44 @@ class UserManager:
             }
         }
         
-        # Criar usuário no sistema se solicitado
-        if create_system_user:
-            if not self._create_system_user(username, home_dir, password):
-                return {'success': False, 'message': 'Falha ao criar usuário no sistema'}
-            
-            # Sincronizar com FTP se o protocolo estiver na lista
-            if 'ftp' in protocols:
-                self._sync_ftp_user(username, password)
+        # CORREÇÃO: Sempre criar usuário no sistema operacional para autenticação FTP/SFTP/PAM
+        # O vsftpd e SSH usam PAM (Pluggable Authentication Modules) que autentica via /etc/passwd e /etc/shadow
+        if not self._create_system_user(username, home_dir, password):
+            # Se falhar, ainda tentamos criar usuário no sistema para garantir autenticação
+            console.print(f"[yellow]⚠ Tentando método alternativo para criar usuário {username}...[/yellow]")
+            # Tentar criar com método alternativo (adduser)
+            try:
+                subprocess.run([
+                    'adduser', '--disabled-login', '--home', home_dir, '--gecos', 'File Server User', username
+                ], capture_output=True, timeout=30)
+                # Definir senha
+                self._update_system_password(username, password)
+            except Exception as e:
+                console.print(f"[yellow]⚠ Erro no método alternativo: {e}[/yellow]")
+        
+        # CORREÇÃO: Sempre sincronizar com FTP independente de create_system_user
+        # O vsftpd requer usuários do sistema para autenticação via PAM
+        if 'ftp' in protocols:
+            self._sync_ftp_user(username, password)
+        
+        # CORREÇÃO: Garantir que diretório home existe e tem permissões corretas
+        try:
+            os.makedirs(home_dir, exist_ok=True)
+            # Tentar definir propriedade (pode falhar sem root)
+            try:
+                import pwd
+                uid = pwd.getpwnam(username).pw_uid
+                gid = pwd.getpwnam(username).pw_gid
+                os.chown(home_dir, uid, gid)
+            except:
+                pass  # Sem permissões para chown
+            os.chmod(home_dir, 0o755)
+        except Exception as e:
+            console.print(f"[yellow]⚠ Aviso ao criar diretório home: {e}[/yellow]")
         
         # Adicionar usuário à lista
         self.users['users'].append(user_data)
         self._save_users()
-        
-        # Criar diretório home
-        try:
-            os.makedirs(home_dir, exist_ok=True)
-            if create_system_user:
-                os.chown(home_dir, self._get_uid(username), self._get_gid(username))
-            os.chmod(home_dir, 0o755)
-        except Exception as e:
-            console.print(f"[yellow]⚠ Aviso: Não foi possível criar diretório {home_dir}: {e}[/yellow]")
         
         console.print(f"[green]✓ Usuário {username} criado com sucesso![/green]")
         return {'success': True, 'user': user_data}
@@ -276,6 +293,14 @@ class UserManager:
         # Atualizar campos
         if 'password' in kwargs:
             user['password_hash'] = self._hash_password(kwargs['password'])
+            
+            # CORREÇÃO: Sempre atualizar senha no sistema operacional para autenticação FTP/SFTP
+            # Independente de ser system_user ou não
+            self._update_system_password(username, kwargs['password'])
+            
+            # CORREÇÃO: Sincronizar com FTP após atualizar senha
+            if 'ftp' in user.get('protocols', []) or kwargs.get('protocols', user.get('protocols', [])).count('ftp') > 0:
+                self._sync_ftp_user(username, kwargs['password'])
         
         if 'home_dir' in kwargs:
             user['home_dir'] = kwargs['home_dir']

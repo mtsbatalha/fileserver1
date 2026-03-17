@@ -79,7 +79,7 @@ class ConfigGenerator:
         local_enable: bool = True,
         write_enable: bool = True,
         chroot_local: bool = True,
-        ssl_enable: bool = False,  # Desabilitado por padrão para maior compatibilidade
+        ssl_enable: bool = True,  # CORREÇÃO: SSL habilitado por padrão para segurança
         ssl_cert_file: str = None,
         ssl_key_file: str = None,
         max_clients: int = 50,
