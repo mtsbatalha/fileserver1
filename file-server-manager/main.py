@@ -12,6 +12,7 @@ import os
 import json
 import secrets
 import string
+import subprocess
 
 # Adicionar caminho do projeto
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
