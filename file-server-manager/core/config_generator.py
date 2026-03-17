@@ -340,7 +340,7 @@ ssl_ciphers=HIGH
         # Configurar /etc/nfs.conf.d/
         nfs_conf = f"""# NFS Server Configuration
 [nfsd]
-vers{NFS_VERSION}=y
+vers{nfs_version}=y
 """
         
         try:
