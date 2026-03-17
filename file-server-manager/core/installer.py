@@ -35,7 +35,7 @@ class Installer:
             'redhat': ['samba', 'samba-client', 'samba-common-tools'],
         },
         'webdav': {
-            'debian': ['apache2', 'libapache2-mod-dav', 'libapache2-mod-dav-fs'],
+            'debian': ['apache2'],
             'redhat': ['httpd', 'mod_dav', 'mod_dav_fs'],
         },
         's3': {
@@ -203,7 +203,25 @@ class Installer:
                 else:
                     self.enable_service(service)
         
+        # Habilitar módulos DAV para WebDAV (Apache)
+        if 'webdav' in protocols and self.distro_type == 'debian':
+            self._enable_apache_modules(['dav', 'dav_fs', 'dav_lock', 'auth_digest'])
+        
         console.print("[green]✓ Serviços configurados![/green]")
+        return True
+    
+    def _enable_apache_modules(self, modules: List[str]) -> bool:
+        """Habilita módulos do Apache"""
+        if self.distro_type != 'debian':
+            return False
+        
+        for module in modules:
+            try:
+                subprocess.run(['a2enmod', module], capture_output=True, timeout=30)
+                console.print(f"[green]✓ Módulo Apache {module} habilitado[/green]")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Aviso: módulo {module}: {e}[/yellow]")
+        
         return True
     
     def create_directories(self, base_path: str, protocols: List[str]) -> bool:
