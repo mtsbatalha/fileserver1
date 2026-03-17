@@ -79,7 +79,7 @@ class ConfigGenerator:
         local_enable: bool = True,
         write_enable: bool = True,
         chroot_local: bool = True,
-        ssl_enable: bool = True,
+        ssl_enable: bool = False,  # Desabilitado por padrão para maior compatibilidade
         ssl_cert_file: str = None,
         ssl_key_file: str = None,
         max_clients: int = 50,
@@ -111,6 +111,7 @@ use_sendfile=YES
 # === Chroot Jail (prender usuários ao diretório home) ===
 chroot_local_user={str(chroot_local).lower()}
 allow_writeable_chroot=YES
+secure_chroot_dir=/var/run/vsftpd/empty
 
 # === Lista de usuários não presos ao chroot ===
 chroot_list_enable=YES
@@ -120,6 +121,7 @@ chroot_list_file=/etc/vsftpd.chroot_list
 pasv_enable=YES
 pasv_min_port={passive_ports.split('-')[0]}
 pasv_max_port={passive_ports.split('-')[1]}
+pasv_address=
 
 # === Limites ===
 max_clients={max_clients}
@@ -133,7 +135,7 @@ xferlog_file=/var/log/vsftpd.log
 xferlog_std_format=YES
 log_ftp_protocol=YES
 
-# === PAM ===
+# === PAM e Autenticação ===
 pam_service_name=vsftpd
 userlist_enable=YES
 userlist_file=/etc/vsftpd.user_list
@@ -143,19 +145,23 @@ userlist_deny=NO
 dirmessage_enable=YES
 message_file=.message
 
+# === Sistema de Arquivos ===
+file_open_mode=0777
+chmod_enable=YES
+
 """
 
         # Adicionar configurações SSL se habilitado
         if ssl_enable:
-            ssl_cert = ssl_cert_file or self.config['security'].get('ssl_cert_path', '/etc/ssl/certs/vsftpd.pem')
-            ssl_key = ssl_key_file or self.config['security'].get('ssl_key_path', '/etc/ssl/private/vsftpd.key')
+            ssl_cert = ssl_cert_file or self.config['security'].get('ssl_cert_path', '/etc/file-server-manager/ssl/server.crt')
+            ssl_key = ssl_key_file or self.config['security'].get('ssl_key_path', '/etc/file-server-manager/ssl/server.key')
             
             config_content += f"""
 # === Configurações SSL/TLS ===
 ssl_enable=YES
 allow_anon_ssl=NO
-force_local_data_ssl=YES
-force_local_logon_ssl=YES
+force_local_data_ssl=NO
+force_local_logon_ssl=NO
 ssl_tlsv1=YES
 ssl_sslv2=NO
 ssl_sslv3=NO
@@ -163,6 +169,12 @@ rsa_cert_file={ssl_cert}
 rsa_private_key_file={ssl_key}
 require_ssl_reuse=NO
 ssl_ciphers=HIGH
+implicit_ssl=NO
+"""
+        else:
+            config_content += """
+# === SSL Desabilitado (modo compatibilidade) ===
+ssl_enable=NO
 """
 
         # Salvar configuração
