@@ -931,9 +931,11 @@ class FileServerManager:
             if 'ftp' in protocols:
                 user_manager._sync_ftp_user(username, None)
             
-            # Criar diretório home
+            # Criar diretório home com permissões corretas
             try:
                 os.makedirs(home_dir, exist_ok=True)
+                # Permissões corretas para SFTP: 755 para o diretório base
+                os.chmod(home_dir, 0o755)
                 console.print(f"[green]✓ Diretório home verificado: {home_dir}[/green]")
             except Exception as e:
                 console.print(f"[yellow]⚠ Erro ao criar diretório: {e}[/yellow]")
