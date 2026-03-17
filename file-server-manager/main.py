@@ -161,9 +161,9 @@ class FileServerManager:
                 "Voltar"
             ], "Gerenciar Protocolos")
             
-            choice = Prompt.ask("Escolha uma opção", choices=["1", "2", "3", "4", "5", "6", "7", "8", "0"], default="0")
+            choice = Prompt.ask("Escolha uma opção", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"], default="0")
             
-            if choice == "0":
+            if choice == "0" or choice == "9":
                 break
             elif choice == "1":
                 self.install_all_protocols()
