@@ -384,12 +384,6 @@ class UserManager:
                     )
                 except Exception:
                     pass
-            
-            # Atualizar senha no sistema e FTP se password foi alterada
-            if 'password' in kwargs:
-                self._update_system_password(username, kwargs['password'])
-                if 'ftp' in user.get('protocols', []):
-                    self._sync_ftp_user(username, kwargs['password'])
         
         console.print(f"[green]✓ Usuário {username} atualizado![/green]")
         return {'success': True, 'user': user}
@@ -423,8 +417,12 @@ class UserManager:
         # Remover usuário do sistema se solicitado
         if delete_system and user.get('system_user'):
             try:
+                cmd = ['userdel']
+                if delete_home:
+                    cmd.append('-r')
+                cmd.append(username)
                 subprocess.run(
-                    ['userdel', '-r' if delete_home else '', username],
+                    cmd,
                     capture_output=True
                 )
                 console.print(f"[green]✓ Usuário {username} removido do sistema[/green]")

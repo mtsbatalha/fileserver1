@@ -99,17 +99,17 @@ class ConfigGenerator:
 listen=YES
 listen_ipv6=NO
 listen_port={listen_port}
-write_enable={str(write_enable).lower()}
-local_enable={str(local_enable).lower()}
+write_enable={'YES' if write_enable else 'NO'}
+local_enable={'YES' if local_enable else 'NO'}
 
 # === Segurança ===
-anonymous_enable={str(anonymous_enable).lower()}
+anonymous_enable={'YES' if anonymous_enable else 'NO'}
 local_umask=022
 dirmessage_enable=YES
 use_sendfile=YES
 
 # === Chroot Jail (prender usuários ao diretório home) ===
-chroot_local_user={str(chroot_local).lower()}
+chroot_local_user={'YES' if chroot_local else 'NO'}
 allow_writeable_chroot=YES
 secure_chroot_dir=/var/run/vsftpd/empty
 

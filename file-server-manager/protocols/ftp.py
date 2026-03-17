@@ -205,7 +205,7 @@ class FTPServer:
                 # Criar usuário no sistema
                 subprocess.run([
                     'useradd', '-m', '-d', f'/srv/files/users/{username}',
-                    '-s', '/usr/sbin/nologin', username
+                    '-s', '/bin/bash', username
                 ], capture_output=True)
                 console.print(f"[green]✓ Usuário {username} criado no sistema[/green]")
             
