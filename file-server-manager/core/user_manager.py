@@ -173,12 +173,15 @@ class UserManager:
                     self._update_system_password(username, password)
                 return True
             
-            # Criar usuário
+            # CORREÇÃO: Usar /bin/bash como shell para permitir autenticação FTP
+            # O vsftpd com check_shell=NO permite login mesmo com shell nologin,
+            # mas algumas versões do PAM podem ter problemas
+            # Vamos usar /bin/bash e depois restringir via configuração
             cmd = [
                 'useradd',
                 '-m',
                 '-d', home_dir,
-                '-s', '/usr/sbin/nologin',  # Sem login shell por segurança
+                '-s', '/bin/bash',  # CORREÇÃO: Usar bash para permitir autenticação
                 username
             ]
             
@@ -187,6 +190,9 @@ class UserManager:
             if result.returncode != 0:
                 console.print(f"[red]✗ Erro ao criar usuário: {result.stderr}[/red]")
                 return False
+            
+            # CORREÇÃO: Criar e configurar diretório home com permissões corretas
+            self._setup_home_directory(username, home_dir)
             
             # Definir senha se fornecida
             if password:
@@ -197,6 +203,48 @@ class UserManager:
             
         except Exception as e:
             console.print(f"[red]✗ Erro: {str(e)}[/red]")
+            return False
+    
+    def _setup_home_directory(self, username: str, home_dir: str) -> bool:
+        """Configura diretório home com permissões corretas para FTP/SFTP"""
+        try:
+            import pwd
+            
+            # Obter UID e GID do usuário
+            uid = pwd.getpwnam(username).pw_uid
+            gid = pwd.getpwnam(username).pw_gid
+            
+            # Criar diretório se não existir
+            os.makedirs(home_dir, exist_ok=True)
+            
+            # CORREÇÃO CRÍTICA: Para chroot jail funcionar corretamente:
+            # 1. O diretório home deve ser owned por root
+            # 2. O diretório home NÃO pode ser writable pelo usuário
+            # 3. Criar um subdiretório 'upload' que o usuário pode escrever
+            
+            # Definir ownership do home para root (necessário para chroot)
+            os.chown(home_dir, 0, 0)  # root:root
+            os.chmod(home_dir, 0o755)  # rwxr-xr-x
+            
+            # Criar subdiretório para upload
+            upload_dir = os.path.join(home_dir, 'upload')
+            os.makedirs(upload_dir, exist_ok=True)
+            os.chown(upload_dir, uid, gid)
+            os.chmod(upload_dir, 0o755)
+            
+            # Criar arquivo de boas-vindas
+            welcome_file = os.path.join(home_dir, '.message')
+            with open(welcome_file, 'w') as f:
+                f.write(f"Bem-vindo ao servidor de arquivos, {username}!\\n")
+                f.write("Use o diretório 'upload' para enviar arquivos.\\n")
+            os.chown(welcome_file, uid, gid)
+            
+            console.print(f"[green]✓ Diretório home configurado: {home_dir}[/green]")
+            console.print(f"[dim]  - Upload em: {upload_dir}[/dim]")
+            return True
+            
+        except Exception as e:
+            console.print(f"[yellow]⚠ Erro ao configurar diretório home: {e}[/yellow]")
             return False
     
     def _update_system_password(self, username: str, password: str) -> bool:

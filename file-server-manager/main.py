@@ -902,11 +902,31 @@ class FileServerManager:
         console.print("[yellow]⚠ Este utilitário irá:[/yellow]")
         console.print("  - Criar usuários no sistema operacional se não existirem")
         console.print("  - Adicionar usuários às listas do vsftpd (FTP)")
-        console.print("  - Criar diretórios home")
+        console.print("  - Configurar permissões corretas nos diretórios home")
+        console.print("  - Gerar configuração PAM para FTP")
+        console.print("  - Reiniciar serviços")
         console.print("\n[dim]Use este utilitário se estiver com problemas de autenticação no FTP/SFTP[/dim]\n")
         
         if not Confirm.ask("Deseja continuar?", default=True):
             return
+        
+        # CORREÇÃO: Gerar configuração PAM para FTP
+        console.print("\n[cyan]▶ Configurando PAM para FTP...[/cyan]")
+        self.config_generator.generate_ftp_pam_config()
+        
+        # CORREÇÃO: Verificar e corrigir permissões do vsftpd.conf
+        console.print("[cyan]▶ Verificando configuração do vsftpd...[/cyan]")
+        if os.path.exists('/etc/vsftpd.conf'):
+            # Verificar se check_shell está configurado
+            try:
+                with open('/etc/vsftpd.conf', 'r') as f:
+                    content = f.read()
+                if 'check_shell=NO' not in content:
+                    console.print("[yellow]⚠ Adicionando check_shell=NO ao vsftpd.conf[/yellow]")
+                    with open('/etc/vsftpd.conf', 'a') as f:
+                        f.write("\n# CORREÇÃO: Permitir login independente do shell\ncheck_shell=NO\n")
+            except Exception as e:
+                console.print(f"[yellow]⚠ Erro ao verificar vsftpd.conf: {e}[/yellow]")
         
         from core.user_manager import UserManager
         
@@ -924,24 +944,36 @@ class FileServerManager:
             
             console.print(f"\n[cyan]▶ Sincronizando: {username}[/cyan]")
             
-            # Criar/atualizar usuário no sistema
+            # CORREÇÃO: Criar/atualizar usuário no sistema com shell correto
             user_manager._create_system_user(username, home_dir, None)
+            
+            # CORREÇÃO: Configurar diretório home com permissões corretas
+            user_manager._setup_home_directory(username, home_dir)
             
             # Sincronizar com FTP se necessário
             if 'ftp' in protocols:
                 user_manager._sync_ftp_user(username, None)
-            
-            # Criar diretório home com permissões corretas
-            try:
-                os.makedirs(home_dir, exist_ok=True)
-                # Permissões corretas para SFTP: 755 para o diretório base
-                os.chmod(home_dir, 0o755)
-                console.print(f"[green]✓ Diretório home verificado: {home_dir}[/green]")
-            except Exception as e:
-                console.print(f"[yellow]⚠ Erro ao criar diretório: {e}[/yellow]")
+        
+        # CORREÇÃO: Reiniciar serviços
+        console.print("\n[cyan]▶ Reiniciando serviços...[/cyan]")
+        try:
+            subprocess.run(['systemctl', 'restart', 'vsftpd'], capture_output=True, timeout=30)
+            console.print("[green]✓ Serviço vsftpd reiniciado[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Erro ao reiniciar vsftpd: {e}[/yellow]")
+        
+        try:
+            subprocess.run(['systemctl', 'restart', 'sshd'], capture_output=True, timeout=30)
+            console.print("[green]✓ Serviço sshd reiniciado[/green]")
+        except Exception as e:
+            console.print(f"[yellow]⚠ Erro ao reiniciar sshd: {e}[/yellow]")
         
         console.print("\n[green]✓ Sincronização concluída![/green]")
-        console.print("[dim]Agora redefina a senha dos usuários usando a opção 2 do menu Utilitários[/dim]")
+        console.print("\n[yellow]⚠ INSTRUÇÕES IMPORTANTES:[/yellow]")
+        console.print("  1. Use a opção 2 (Redefinir Senha) para definir senhas dos usuários")
+        console.print("  2. Verifique se o arquivo /etc/pam.d/ftp foi criado corretamente")
+        console.print("  3. Teste o login FTP com: ftp localhost")
+        console.print("  4. Se ainda houver problemas, verifique /var/log/vsftpd.log")
     
     def reset_password_utility(self):
         """Utilitário para redefinir senha"""
@@ -985,59 +1017,22 @@ class FileServerManager:
                 console.print("[red]✗ Senhas não coincidem[/red]")
                 return
         
-        # CORREÇÃO: Usar o user_manager correto (self.user_manager já é a instância correta)
-        console.print("\n[cyan]▶ Atualizando senha no sistema...[/cyan]")
+        # Atualizar no sistema
+        from core.user_manager import UserManager
+        user_manager = UserManager(self.config_path)
         
-        # 1. Primeiro, garantir que o usuário existe no sistema operacional
-        try:
-            result = subprocess.run(['id', username], capture_output=True, text=True)
-            if result.returncode != 0:
-                console.print(f"[yellow]⚠ Usuário {username} não existe no sistema. Criando...[/yellow]")
-                home_dir = user.get('home_dir', f'/srv/files/users/{username}')
-                # Criar usuário no sistema
-                subprocess.run([
-                    'useradd', '-m', '-d', home_dir, '-s', '/usr/sbin/nologin', username
-                ], capture_output=True)
-        except Exception as e:
-            console.print(f"[yellow]⚠ Erro ao verificar/criar usuário no sistema: {e}[/yellow]")
+        # Atualizar senha no sistema operacional
+        user_manager._update_system_password(username, new_password)
         
-        # 2. Atualizar senha no sistema operacional
-        console.print("[cyan]▶ Atualizando senha no sistema operacional...[/cyan]")
-        result = self.user_manager._update_system_password(username, new_password)
+        # Atualizar no gerenciador
+        user_manager.update_user(username, password=new_password)
         
-        # 3. Atualizar no gerenciador (salva hash bcrypt)
-        console.print("[cyan]▶ Atualizando hash local...[/cyan]")
-        self.user_manager.update_user(username, password=new_password)
-        
-        # 4. Sincronizar com FTP
+        # Sincronizar com FTP
         if 'ftp' in user.get('protocols', []):
-            console.print("[cyan]▶ Sincronizando com FTP...[/cyan]")
-            self.user_manager._sync_ftp_user(username, new_password)
-        
-        # 5. Reiniciar serviços
-        console.print("[cyan]▶ Reiniciando serviços...[/cyan]")
-        try:
-            subprocess.run(['systemctl', 'restart', 'vsftpd'], capture_output=True, timeout=10)
-            console.print("[green]✓ Serviço vsftpd reiniciado[/green]")
-        except:
-            pass
-        try:
-            subprocess.run(['systemctl', 'restart', 'sshd'], capture_output=True, timeout=10)
-            console.print("[green]✓ Serviço sshd reiniciado[/green]")
-        except:
-            pass
+            user_manager._sync_ftp_user(username, new_password)
         
         console.print(f"\n[green]✓ Senha de {username} redefinida com sucesso![/green]")
         console.print("[dim]A autenticação FTP/SFTP deve funcionar agora[/dim]")
-        
-        # Aviso adicional
-        console.print("\n[yellow]⚠ IMPORTANTE:[/yellow]")
-        console.print("  - A senha foi atualizada no sistema (/etc/shadow)")
-        console.print("  - O vsftpd usa PAM para autenticar usuários do sistema")
-        console.print("  - Se ainda não conseguir acessar, verifique:")
-        console.print("    1. Se o usuário está em /etc/vsftpd.user_list")
-        console.print("    2. Se o shell do usuário não é /usr/sbin/nologin")
-        console.print("    3. Se o diretório home existe e tem permissões corretas")
     
     def restart_services_utility(self):
         """Utilitário para reiniciar serviços"""
