@@ -160,3 +160,51 @@ class FTPServer:
         console.print("[cyan]▶ Aplicando configuração FTP...[/cyan]")
         self.restart()
         return True
+    
+    def sync_user(self, username: str, password: str = None) -> bool:
+        """
+        Sincroniza usuário com o sistema para autenticação FTP
+        
+        Args:
+            username: Nome do usuário
+            password: Senha do usuário (opcional, se não existir atualiza apenas listas)
+        """
+        console.print(f"[cyan]▶ Sincronizando usuário FTP: {username}...[/cyan]")
+        
+        try:
+            # Verificar se usuário existe no sistema
+            result = subprocess.run(['id', username], capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                # Criar usuário no sistema
+                subprocess.run([
+                    'useradd', '-m', '-d', f'/srv/files/users/{username}',
+                    '-s', '/usr/sbin/nologin', username
+                ], capture_output=True)
+                console.print(f"[green]✓ Usuário {username} criado no sistema[/green]")
+            
+            # Adicionar às listas do vsftpd
+            self.add_user(username, f'/srv/files/users/{username}')
+            
+            # Se senha fornecida, atualizar senha do sistema
+            if password:
+                # Usar chpasswd para definir senha
+                process = subprocess.Popen(
+                    ['chpasswd'],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE
+                )
+                stdout, stderr = process.communicate(f"{username}:{password}\n".encode())
+                
+                if process.returncode == 0:
+                    console.print(f"[green]✓ Senha de {username} atualizada[/green]")
+                else:
+                    console.print(f"[red]✗ Erro ao atualizar senha: {stderr.decode()}[/red]")
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            console.print(f"[red]✗ Erro: {e}[/red]")
+            return False

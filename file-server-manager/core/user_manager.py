@@ -116,8 +116,12 @@ class UserManager:
         
         # Criar usuário no sistema se solicitado
         if create_system_user:
-            if not self._create_system_user(username, home_dir):
+            if not self._create_system_user(username, home_dir, password):
                 return {'success': False, 'message': 'Falha ao criar usuário no sistema'}
+            
+            # Sincronizar com FTP se o protocolo estiver na lista
+            if 'ftp' in protocols:
+                self._sync_ftp_user(username, password)
         
         # Adicionar usuário à lista
         self.users['users'].append(user_data)
@@ -135,7 +139,7 @@ class UserManager:
         console.print(f"[green]✓ Usuário {username} criado com sucesso![/green]")
         return {'success': True, 'user': user_data}
     
-    def _create_system_user(self, username: str, home_dir: str) -> bool:
+    def _create_system_user(self, username: str, home_dir: str, password: str = None) -> bool:
         """Cria usuário no sistema operacional"""
         try:
             # Verificar se já existe
@@ -147,6 +151,9 @@ class UserManager:
             
             if result.returncode == 0:
                 console.print(f"[yellow]⚠ Usuário {username} já existe no sistema[/yellow]")
+                # Atualizar senha se fornecida
+                if password:
+                    self._update_system_password(username, password)
                 return True
             
             # Criar usuário
@@ -164,11 +171,55 @@ class UserManager:
                 console.print(f"[red]✗ Erro ao criar usuário: {result.stderr}[/red]")
                 return False
             
+            # Definir senha se fornecida
+            if password:
+                self._update_system_password(username, password)
+            
             console.print(f"[green]✓ Usuário {username} criado no sistema[/green]")
             return True
             
         except Exception as e:
             console.print(f"[red]✗ Erro: {str(e)}[/red]")
+            return False
+    
+    def _update_system_password(self, username: str, password: str) -> bool:
+        """Atualiza senha de usuário no sistema"""
+        try:
+            process = subprocess.Popen(
+                ['chpasswd'],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            stdout, stderr = process.communicate(f"{username}:{password}\n".encode())
+            
+            if process.returncode == 0:
+                console.print(f"[green]✓ Senha de {username} atualizada no sistema[/green]")
+                return True
+            else:
+                console.print(f"[red]✗ Erro ao atualizar senha: {stderr.decode()}[/red]")
+                return False
+        except Exception as e:
+            console.print(f"[red]✗ Erro: {str(e)}[/red]")
+            return False
+    
+    def _sync_ftp_user(self, username: str, password: str = None) -> bool:
+        """Sincroniza usuário com servidor FTP"""
+        try:
+            from protocols.ftp import FTPServer
+            ftp_server = FTPServer(self.config_path)
+            
+            # Adicionar às listas do vsftpd
+            ftp_server.add_user(username, f'/srv/files/users/{username}')
+            
+            # Atualizar senha do sistema para autenticação FTP/PAM
+            if password:
+                self._update_system_password(username, password)
+            
+            console.print(f"[green]✓ Usuário {username} sincronizado com FTP[/green]")
+            return True
+        except Exception as e:
+            console.print(f"[yellow]⚠ Não foi possível sincronizar com FTP: {e}[/yellow]")
             return False
     
     def _get_uid(self, username: str) -> int:
@@ -251,14 +302,21 @@ class UserManager:
         self._save_users()
         
         # Atualizar usuário no sistema se necessário
-        if user.get('system_user') and 'home_dir' in kwargs:
-            try:
-                subprocess.run(
-                    ['usermod', '-d', kwargs['home_dir'], username],
-                    capture_output=True
-                )
-            except Exception:
-                pass
+        if user.get('system_user'):
+            if 'home_dir' in kwargs:
+                try:
+                    subprocess.run(
+                        ['usermod', '-d', kwargs['home_dir'], username],
+                        capture_output=True
+                    )
+                except Exception:
+                    pass
+            
+            # Atualizar senha no sistema e FTP se password foi alterada
+            if 'password' in kwargs:
+                self._update_system_password(username, kwargs['password'])
+                if 'ftp' in user.get('protocols', []):
+                    self._sync_ftp_user(username, kwargs['password'])
         
         console.print(f"[green]✓ Usuário {username} atualizado![/green]")
         return {'success': True, 'user': user}
